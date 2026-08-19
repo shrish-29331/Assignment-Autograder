@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Env files (never commit real secrets)
+.env
+backend/.env
+frontend/.env
+
+.DS_Store
