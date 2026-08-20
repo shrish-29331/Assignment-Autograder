@@ -32,7 +32,7 @@ class AIFeedback(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)
     risk_flags: list[str] = Field(default_factory=list)
-    model: str
+    model: str = "unknown"
 
 
 class GradingResult(BaseModel):
@@ -66,6 +66,11 @@ class PlagiarismPair(BaseModel):
     similarity: float
     flagged: bool
     ai_explanation: str | None = None
+    case_id: str | None = None
+    diff: str | None = None
+    ta_decision: str | None = None
+    ta_comment: str | None = None
+    student_concern: str | None = None
 
 
 class PlagiarismReport(BaseModel):

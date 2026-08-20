@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 120
 
-    # AI (Anthropic Claude)
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-5"
+    # AI (Google Gemini)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.6-flash"
     enable_ai_feedback: bool = True
 
     # Sandbox limits for running student code

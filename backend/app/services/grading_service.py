@@ -4,7 +4,7 @@ Orchestrates a full grading run for one submission:
   1. Run test cases in the sandbox (code_runner)
   2. Run static code-quality checks (code_quality)
   3. Weight + combine into a final score using the assignment's rubric
-  4. Optionally ask Claude for qualitative feedback (ai_service)
+    4. Optionally ask Gemini for qualitative feedback (ai_service)
   5. Persist the result on the submission document
 
 Runs as a FastAPI BackgroundTask so the submit endpoint returns immediately
@@ -18,6 +18,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.services import ai_service, code_quality, code_runner
+from app.services.plagiarism_service import check_assignment_for_plagiarism
 
 
 async def grade_submission(db: AsyncIOMotorDatabase, submission_id: str) -> None:
@@ -80,3 +81,11 @@ async def grade_submission(db: AsyncIOMotorDatabase, submission_id: str) -> None
     }
 
     await db.submissions.update_one({"_id": submission["_id"]}, {"$set": {"result": result}})
+    try:
+        await check_assignment_for_plagiarism(
+            db,
+            submission["assignment_id"],
+            explain_top_n=0,
+        )
+    except Exception:  # noqa: BLE001 -- plagiarism analysis must not undo a posted grade
+        pass

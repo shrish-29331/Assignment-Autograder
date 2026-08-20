@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -50,11 +51,27 @@ async def submit_assignment(
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="File must be UTF-8 text source code")
 
+    content_hash = hashlib.sha256(raw).hexdigest()
+    duplicate = await db.submissions.find_one(
+        {
+            "assignment_id": assignment_id,
+            "student_username": current_user.username,
+            "content_hash": content_hash,
+        }
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="You have already submitted this exact file for this assignment.",
+        )
+
     doc = {
         "assignment_id": assignment_id,
         "student_username": current_user.username,
         "filename": file.filename,
         "code": code,
+        "content_hash": content_hash,
+        "code_bytes": len(raw),
         "submitted_at": datetime.now(timezone.utc),
         "result": {"status": "pending"},
     }
@@ -91,6 +108,20 @@ async def submissions_for_assignment(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     cursor = db.submissions.find({"assignment_id": assignment_id}).sort("submitted_at", -1)
+    return [_to_public(doc) async for doc in cursor]
+
+
+@router.get("/by-student/{username}", response_model=list[SubmissionPublic])
+async def submissions_for_student(
+    username: str,
+    assignment_id: str | None = None,
+    current_user: UserPublic = Depends(require_ta),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    query: dict = {"student_username": username}
+    if assignment_id:
+        query["assignment_id"] = assignment_id
+    cursor = db.submissions.find(query).sort("submitted_at", -1)
     return [_to_public(doc) async for doc in cursor]
 
 

@@ -1,10 +1,20 @@
+import secrets
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.mongodb import get_db
 from app.deps import get_current_user
-from app.models.user import TokenResponse, UserLogin, UserPublic, UserRegister
+from app.models.user import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserLogin,
+    UserPublic,
+    UserRegister,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -37,6 +47,59 @@ async def login(payload: UserLogin, db: AsyncIOMotorDatabase = Depends(get_db)):
     token = create_access_token(subject=user["username"], role=user["role"])
     public_user = UserPublic(username=user["username"], full_name=user["full_name"], role=user["role"])
     return TokenResponse(access_token=token, user=public_user)
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    user = await db.users.find_one({"username": payload.username})
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "reset_token": token,
+                "reset_token_expires": expires_at,
+            }
+        },
+    )
+
+    return {
+        "message": "Password reset token created",
+        "token": token,
+        "expires_at": expires_at,
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    user = await db.users.find_one(
+        {
+            "username": payload.username,
+            "reset_token": payload.token,
+            "reset_token_expires": {"$gt": datetime.now(timezone.utc)},
+        }
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {"hashed_password": hash_password(payload.new_password)},
+            "$unset": {"reset_token": "", "reset_token_expires": ""},
+        },
+    )
+    return {"message": "Password reset successful"}
 
 
 @router.get("/me", response_model=UserPublic)

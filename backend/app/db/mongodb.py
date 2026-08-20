@@ -29,6 +29,16 @@ async def connect_to_mongo() -> None:
     await database.db.assignments.create_index("created_by")
     await database.db.submissions.create_index([("assignment_id", 1), ("student_username", 1)])
     await database.db.submissions.create_index("assignment_id")
+    await database.db.submissions.create_index(
+        [("assignment_id", 1), ("student_username", 1), ("content_hash", 1)]
+    )
+    await database.db.plagiarism_cases.create_index(
+        [("assignment_id", 1), ("submission_id_a", 1), ("submission_id_b", 1)],
+        unique=True,
+    )
+    await database.db.plagiarism_cases.create_index(
+        [("student_a", 1), ("student_b", 1), ("flagged", 1)]
+    )
 
 
 async def close_mongo_connection() -> None:
