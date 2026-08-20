@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { assignmentsApi, submissionsApi } from "../api/endpoints";
+import { assignmentsApi, plagiarismApi, submissionsApi } from "../api/endpoints";
 import NavBar from "../components/NavBar";
+import PlagiarismAlertsCard from "../components/PlagiarismAlertsCard";
 import PlagiarismPanel from "../components/PlagiarismPanel";
 import StatusBadge from "../components/StatusBadge";
 import SubmissionResultPanel from "../components/SubmissionResultPanel";
@@ -17,6 +18,8 @@ export default function AssignmentDetailPage() {
 
   const [assignment, setAssignment] = useState(null);
   const [submissions, setSubmissions] = useState([]);
+  const [studentHistory, setStudentHistory] = useState([]);
+  const [plagiarismCases, setPlagiarismCases] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,8 +27,21 @@ export default function AssignmentDetailPage() {
   const pollRef = useRef(null);
 
   const fetchSubmissions = useCallback(async () => {
-    const { data } = user.role === "student" ? await submissionsApi.mine(id) : await submissionsApi.byAssignment(id);
+    const { data } =
+      user.role === "student"
+        ? await submissionsApi.mine(id)
+        : await submissionsApi.byAssignment(id);
     setSubmissions(data);
+
+    if (user.role === "student" && data.length && data.every((item) => !["pending", "grading"].includes(item.result.status))) {
+      try {
+        const { data: cases } = await plagiarismApi.mine(id);
+        setPlagiarismCases(cases);
+      } catch {
+        // Plagiarism status is advisory to the dashboard and should not break grading UI.
+      }
+    }
+
     return data;
   }, [id, user.role]);
 
@@ -69,6 +85,41 @@ export default function AssignmentDetailPage() {
     setSelectedId(newSubmission.id);
   };
 
+  const selectedSubmission = submissions.find((s) => s.id === selectedId);
+
+  useEffect(() => {
+    if (user.role !== "student") {
+      setPlagiarismCases([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    plagiarismApi
+      .mine(id)
+      .then(({ data }) => {
+        if (!cancelled) setPlagiarismCases(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPlagiarismCases([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user.role]);
+
+  useEffect(() => {
+    if (user.role !== "ta" || !selectedSubmission) {
+      setStudentHistory([]);
+      return undefined;
+    }
+    submissionsApi
+      .byStudent(selectedSubmission.student_username, id)
+      .then(({ data }) => setStudentHistory(data))
+      .catch(() => setStudentHistory([]));
+    return undefined;
+  }, [id, selectedSubmission, user.role]);
+
   if (loading) {
     return (
       <div className="min-h-screen">
@@ -87,8 +138,6 @@ export default function AssignmentDetailPage() {
     );
   }
 
-  const selectedSubmission = submissions.find((s) => s.id === selectedId);
-
   return (
     <div className="min-h-screen">
       <NavBar />
@@ -105,7 +154,7 @@ export default function AssignmentDetailPage() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-4 text-xs text-ink-400">
-            <span>Due {new Date(assignment.deadline).toLocaleString()}</span>
+            <span>Due (your local time) {new Date(assignment.deadline).toLocaleString()}</span>
             <span>
               Rubric: {assignment.test_case_weight}% tests / {assignment.code_quality_weight}% quality
             </span>
@@ -134,7 +183,19 @@ export default function AssignmentDetailPage() {
         </div>
 
         {user.role === "student" ? (
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <>
+            <PlagiarismAlertsCard
+              cases={plagiarismCases}
+              username={user.username}
+              onUpdated={(updated) =>
+                setPlagiarismCases((current) =>
+                  current.map((item) =>
+                    item.case_id === updated.case_id ? updated : item,
+                  ),
+                )
+              }
+            />
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="space-y-4">
               {submissions.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-ink-200 p-8 text-center text-sm text-ink-400">
@@ -147,7 +208,8 @@ export default function AssignmentDetailPage() {
             <div>
               <SubmitForm assignment={assignment} onSubmitted={handleSubmitted} />
             </div>
-          </div>
+            </div>
+          </>
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
             <div className="space-y-4">
@@ -176,6 +238,29 @@ export default function AssignmentDetailPage() {
                   ))}
                 </div>
               </div>
+
+              {selectedSubmission && (
+                <div className="rounded-xl border border-ink-100 bg-white p-4 shadow-card">
+                  <h3 className="font-display text-sm font-semibold text-ink-700">
+                    {selectedSubmission.student_username}&apos;s previous submissions
+                  </h3>
+                  <div className="mt-3 space-y-1">
+                    {studentHistory.map((historyItem, index) => (
+                      <button
+                        key={historyItem.id}
+                        type="button"
+                        onClick={() => setSelectedId(historyItem.id)}
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs transition ${
+                          historyItem.id === selectedId ? "bg-marigold-light/30" : "hover:bg-paper-dim"
+                        }`}
+                      >
+                        <span>Submission #{studentHistory.length - index}</span>
+                        <span className="text-ink-400">{new Date(historyItem.submitted_at).toLocaleDateString()}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <PlagiarismPanel assignmentId={id} />
             </div>

@@ -3,6 +3,8 @@ import client from "./client";
 export const authApi = {
   register: (payload) => client.post("/api/auth/register", payload),
   login: (payload) => client.post("/api/auth/login", payload),
+  forgotPassword: (payload) => client.post("/api/auth/forgot-password", payload),
+  resetPassword: (payload) => client.post("/api/auth/reset-password", payload),
   me: () => client.get("/api/auth/me"),
 };
 
@@ -22,13 +24,34 @@ export const submissionsApi = {
     });
   },
   mine: (assignmentId) =>
-    client.get("/api/submissions/mine", { params: assignmentId ? { assignment_id: assignmentId } : {} }),
-  byAssignment: (assignmentId) => client.get(`/api/submissions/by-assignment/${assignmentId}`),
+    client.get("/api/submissions/mine", {
+      params: assignmentId ? { assignment_id: assignmentId } : {},
+    }),
+  byAssignment: (assignmentId) =>
+    client.get(`/api/submissions/by-assignment/${assignmentId}`),
+  byStudent: (username, assignmentId) =>
+    client.get(`/api/submissions/by-student/${username}`, {
+      params: assignmentId ? { assignment_id: assignmentId } : {},
+    }),
   get: (id) => client.get(`/api/submissions/${id}`),
 };
 
 export const plagiarismApi = {
   check: (assignmentId, threshold = 0.8) =>
-    client.post(`/api/plagiarism/${assignmentId}/check`, null, { params: { threshold } }),
-  latest: (assignmentId) => client.get(`/api/plagiarism/${assignmentId}/latest`),
+    client.post(`/api/plagiarism/${assignmentId}/check`, null, {
+      params: { threshold },
+    }),
+  latest: (assignmentId) =>
+    client.get(`/api/plagiarism/${assignmentId}/latest`),
+  cases: (assignmentId) =>
+    client.get(`/api/plagiarism/${assignmentId}/cases`),
+  mine: (assignmentId) =>
+    client.get("/api/plagiarism/mine", {
+      params: assignmentId ? { assignment_id: assignmentId } : {},
+    }),
+  decide: (caseId, payload) =>
+    client.patch(`/api/plagiarism/cases/${caseId}/decision`, payload),
+  contest: (caseId, payload) =>
+    client.post(`/api/plagiarism/cases/${caseId}/contest`, payload),
+  storage: () => client.get("/api/system/storage"),
 };

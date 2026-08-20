@@ -99,7 +99,7 @@ export default function CreateAssignmentPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-ink-400">Deadline</label>
+              <label className="mb-1 block text-xs font-medium text-ink-400">Deadline (your local time)</label>
               <input
                 type="datetime-local"
                 required

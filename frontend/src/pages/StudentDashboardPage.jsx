@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { assignmentsApi } from "../api/endpoints";
+import { assignmentsApi, plagiarismApi } from "../api/endpoints";
 import AssignmentCard from "../components/AssignmentCard";
 import NavBar from "../components/NavBar";
+import PlagiarismAlertsCard from "../components/PlagiarismAlertsCard";
+import { useAuth } from "../context/AuthContext";
 
 export default function StudentDashboardPage() {
+  const { user } = useAuth();
   const [assignments, setAssignments] = useState([]);
+  const [plagiarismCases, setPlagiarismCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -16,12 +20,24 @@ export default function StudentDashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    plagiarismApi.mine().then(({ data }) => setPlagiarismCases(data)).catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen">
       <NavBar />
       <main className="mx-auto max-w-6xl px-6 py-10">
         <h1 className="font-display text-2xl font-semibold text-ink-700">Your assignments</h1>
         <p className="mt-1 text-sm text-ink-400">Submit your code and get instant, detailed feedback.</p>
+
+        <PlagiarismAlertsCard
+          cases={plagiarismCases}
+          username={user.username}
+          onUpdated={(updated) =>
+            setPlagiarismCases((current) => current.map((item) => (item.case_id === updated.case_id ? updated : item)))
+          }
+        />
 
         {loading && <p className="mt-8 text-sm text-ink-300">Loading&hellip;</p>}
         {error && <p className="mt-8 text-sm text-fail">{error}</p>}

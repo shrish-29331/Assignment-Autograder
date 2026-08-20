@@ -14,8 +14,7 @@ export default function NavBar() {
     <header className="bg-ink text-paper">
       <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-baseline gap-2">
-          <span className="font-display text-xl font-semibold tracking-tight">Autograder</span>
-          <span className="font-mono text-xs text-marigold-light">pro</span>
+          <span className="font-display text-xl font-semibold tracking-tight">Assignment Autograder</span>
         </Link>
 
         {user && (

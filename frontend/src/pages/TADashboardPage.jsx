@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { assignmentsApi } from "../api/endpoints";
+import { assignmentsApi, plagiarismApi } from "../api/endpoints";
 import AssignmentCard from "../components/AssignmentCard";
 import NavBar from "../components/NavBar";
 
 export default function TADashboardPage() {
   const [assignments, setAssignments] = useState([]);
+  const [storage, setStorage] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -13,6 +14,10 @@ export default function TADashboardPage() {
       .list()
       .then(({ data }) => setAssignments(data))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    plagiarismApi.storage().then(({ data }) => setStorage(data)).catch(() => {});
   }, []);
 
   return (
@@ -31,6 +36,23 @@ export default function TADashboardPage() {
             + New assignment
           </Link>
         </div>
+
+        {storage && (
+          <div className="mt-6 grid grid-cols-3 gap-3 rounded-xl border border-ink-100 bg-white p-4 shadow-card">
+            <div>
+              <p className="font-mono text-lg font-semibold text-ink-700">{storage.submission_count}</p>
+              <p className="text-xs text-ink-400">Submissions</p>
+            </div>
+            <div>
+              <p className="font-mono text-lg font-semibold text-ink-700">{storage.data_bytes.toLocaleString()}</p>
+              <p className="text-xs text-ink-400">Source bytes</p>
+            </div>
+            <div>
+              <p className="font-mono text-lg font-semibold text-ink-700">{storage.plagiarism_case_count}</p>
+              <p className="text-xs text-ink-400">Plagiarism cases</p>
+            </div>
+          </div>
+        )}
 
         {loading && <p className="mt-8 text-sm text-ink-300">Loading&hellip;</p>}
 
