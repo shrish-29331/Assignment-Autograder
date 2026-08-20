@@ -1,139 +1,397 @@
-# Autograder Pro
+Assignment Autograder
 
-A full-stack, AI-assisted rewrite of a Streamlit assignment-autograder project. Students submit
-Python/C/C++ source files; the backend compiles/runs them against instructor-defined test cases,
-scores static code quality, and — new — asks Claude for qualitative feedback and plagiarism-pair
-explanations on top of the deterministic score.
+A full-stack programming assignment platform for instructors/teaching assistants and students. It combines deterministic code execution and grading with static code-quality analysis, advisory Gemini feedback, plagiarism detection, code comparison, submission history, and review/contest workflows.
 
-## What changed from the original project
+Features
 
-The original was a single Streamlit app (`Login.py`, `auto_evaluate.py`, `plagiarism.py`) with a
-few issues this rewrite fixes:
+Student
 
-| Original | Here |
-|---|---|
-| MongoDB URI + credentials hardcoded in `Login.py` | All secrets in `.env` (gitignored), loaded via `pydantic-settings` |
-| Plaintext-ish password comparison | `bcrypt` hashing via `passlib`, JWT-based auth |
-| "Who's logged in" tracked by writing to a local `constants.py` file (breaks with 2+ concurrent users) | Stateless JWT, one MongoDB `users` collection |
-| Submitted code compiled/run directly on the host, no isolation | Sandboxed subprocess execution: per-run temp dir, CPU/memory/wall-clock limits, stripped env (see security note below) |
-| Streamlit UI, single Python process, no API | FastAPI REST API + separate React (Vite/Tailwind) frontend, deployable independently |
-| No AI involved ("No External APIs" was a stated goal) | Claude API generates advisory feedback on submissions and explains flagged plagiarism pairs |
-| Plagiarism check only printed a flag | Full pairwise similarity report with a threshold slider in the UI |
+Create an account and authenticate securely.
 
-Deterministic grading (test cases + static analysis) is still what decides the score — the AI layer
-is additive and clearly labelled as advisory, not a replacement for it.
+View assignments and deadlines in local time.
 
-## Architecture
+Submit source-code files for an assignment.
 
-```
-autograder-pro/
-├── backend/            FastAPI + MongoDB (Motor async driver)
-│   └── app/
-│       ├── core/        settings, JWT/password hashing
-│       ├── db/          Mongo connection
-│       ├── models/      Pydantic schemas
-│       ├── routers/     auth, assignments, submissions, plagiarism
-│       └── services/    code_runner (sandbox), code_quality, plagiarism_service, ai_service, grading_service
-├── frontend/           React + Vite + Tailwind SPA
-│   └── src/
-│       ├── api/          axios client + endpoint wrappers
-│       ├── context/       auth context (JWT in localStorage)
-│       ├── components/    reusable UI (score stamp, test case table, AI feedback card, etc.)
-│       └── pages/         Login, Student dashboard, TA dashboard, Assignment detail, Create assignment
-└── docker-compose.yml  Mongo + backend + frontend, one command up
-```
+Receive deterministic test-case results and rubric-based scores.
 
-## Quick start (Docker)
+View static code-quality feedback (Pylint for Python submissions).
 
-```bash
-cd autograder-pro
-cp backend/.env.example backend/.env
-# edit backend/.env: set JWT_SECRET_KEY and ANTHROPIC_API_KEY
+View advisory AI feedback generated with Google Gemini.
 
-docker compose up --build
-```
+View previous submissions for an assignment.
 
-- Frontend: http://localhost:5173
-- Backend API docs (Swagger): http://localhost:8000/docs
+Prevent duplicate submission of the same file/content for the same student and assignment.
 
-Register an account from the login page (choose "Student" or "TA") — there are no seeded accounts
-by default. If you'd like demo accounts, run `python backend/seed.py` (see below).
+See plagiarism flags when a submission is automatically matched with another student's latest submission.
 
-## Quick start (without Docker)
+See the similarity percentage and TA review status.
 
-**Backend**
-```bash
+Contest a plagiarism flag by submitting a written concern to the TA.
+
+See the TA's final decision and comment after review.
+
+Teaching Assistant
+
+Create and manage assignments.
+
+Define test cases, hidden tests, deadlines, language, and grading weights.
+
+View all student submissions and their grading status.
+
+Review a student's previous submissions.
+
+Run or re-run plagiarism checks.
+
+Automatic plagiarism flags are created at 80%+ similarity.
+
+Review similarity percentages and source-code diffs.
+
+Request advisory Gemini analysis of flagged pairs.
+
+Mark a case as plagiarism or not plagiarism.
+
+Add a review comment that is returned to the student.
+
+Read student contest/concern messages.
+
+Grading
+
+The deterministic grader is the source of truth for the grade.
+
+A submission is evaluated using:
+
+Test-case execution.
+
+Static code-quality analysis.
+
+The configured assignment rubric.
+
+AI feedback is advisory only. Gemini does not modify, recompute, or replace the deterministic score.
+
+AI Feedback
+
+Google Gemini is used to provide:
+
+A concise submission summary.
+
+Specific strengths.
+
+Actionable improvements.
+
+Potential risks or edge cases.
+
+The model name is displayed with the feedback. AI failures do not invalidate the deterministic grade.
+
+Plagiarism Detection
+
+Plagiarism detection is deterministic and uses:
+
+Token preprocessing.
+
+Porter stemming.
+
+TF-IDF vectorization.
+
+Cosine similarity.
+
+The default automatic threshold is 80%.
+
+For each assignment, the system compares each student's latest submission against the latest submission of other students. A match at or above the threshold creates/updates a plagiarism case.
+
+Gemini may provide an advisory explanation for a flagged pair, but it does not determine whether plagiarism occurred. The final decision remains with the TA.
+
+Code diff
+
+The system stores a unified source-code comparison for flagged submissions.
+
+Identical files are explicitly reported as:
+
+FILES ARE IDENTICAL — 100% CODE MATCH
+
+rather than producing an empty diff.
+
+Plagiarism Review Workflow
+
+Student A submits
+        |
+Student B submits
+        |
+Both submissions are graded
+        |
+Latest submissions compared
+        |
+TF-IDF + cosine similarity
+        |
+      >= 80%
+        |
+Automatic flag
+        |
++-------------------------+
+| TA dashboard            |
+| - similarity            |
+| - code diff             |
+| - Gemini advisory       |
+| - student concern       |
+| - TA decision/comment   |
++-------------------------+
+        |
+        v
+Student sees final review
+
+Duplicate Submission Protection
+
+The submission endpoint hashes the validated source payload using SHA-256.
+
+A student cannot submit the same source content repeatedly for the same assignment. Duplicate submissions are rejected before a new grading job/API call is scheduled, reducing unnecessary storage, grading latency, and AI/API usage.
+
+Submission History
+
+The TA can inspect previous submissions for an individual student instead of only seeing the latest submission.
+
+The plagiarism checker itself intentionally compares the latest submission per student for an assignment.
+
+Architecture
+
+Frontend
+  React + Vite
+      |
+      | REST API
+      v
+Backend
+  FastAPI
+      |
+      +-- Authentication / JWT
+      +-- Assignment management
+      +-- Submission API
+      +-- Deterministic grading
+      +-- Static code quality
+      +-- Gemini advisory feedback
+      +-- Plagiarism detection
+      +-- TA/student review workflows
+      |
+      v
+MongoDB
+
+Technology Stack
+
+Frontend
+
+React
+
+Vite
+
+Axios
+
+React Router
+
+Tailwind CSS
+
+Backend
+
+Python
+
+FastAPI
+
+Pydantic / Pydantic Settings
+
+Motor
+
+MongoDB
+
+Uvicorn
+
+Analysis / Grading
+
+Pylint
+
+scikit-learn
+
+NLTK
+
+TF-IDF
+
+Cosine similarity
+
+Python subprocess-based execution
+
+AI
+
+Google Gemini
+
+google-genai
+
+Project Structure
+
+Assignment-Autograder/
+├── backend/
+│   ├── app/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── models/
+│   │   ├── routers/
+│   │   ├── services/
+│   │   └── main.py
+│   ├── requirements.txt
+│   └── .env
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── context/
+│   │   └── pages/
+│   ├── package.json
+│   └── vite.config.js
+│
+└── README.md
+
+Environment Variables
+
+Create backend/.env:
+
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=autograder
+
+JWT_SECRET_KEY=replace-with-a-strong-secret
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=120
+
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-3.6-flash
+ENABLE_AI_FEEDBACK=true
+
+CODE_EXEC_TIMEOUT_SECONDS=8
+CODE_EXEC_MEMORY_LIMIT_MB=256
+
+FRONTEND_ORIGIN=http://localhost:5173
+
+Never commit a real .env file or API keys to Git.
+
+Local Setup
+
+1. MongoDB
+
+MongoDB can be run with Docker:
+
+docker run -d --name autograder-mongo -p 27017:27017 mongo:8
+
+Check it:
+
+docker ps
+
+2. Backend
+
+Use Python 3.12.
+
 cd backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env   # fill in JWT_SECRET_KEY, ANTHROPIC_API_KEY, MONGO_URI
+uv venv .venv --python 3.12
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 
-# MongoDB must be running locally (or point MONGO_URI at Atlas / another host)
-# g++ and gcc must be installed for C/C++ grading to work
+If the environment was recreated and pip is missing:
+
+uv pip install -r requirements.txt
+
+Start FastAPI:
 
 uvicorn app.main:app --reload
-```
 
-**Frontend** (separate terminal)
-```bash
+Backend:
+
+http://127.0.0.1:8000
+
+3. Frontend
+
 cd frontend
 npm install
-cp .env.example .env   # VITE_API_BASE_URL=http://localhost:8000
 npm run dev
-```
 
-**Optional: seed demo accounts**
-```bash
-cd backend
-python seed.py   # prompts for passwords interactively, nothing hardcoded
-```
+Frontend:
 
-## Getting an Anthropic API key
+http://localhost:5173
 
-AI feedback and plagiarism explanations require `ANTHROPIC_API_KEY` in `backend/.env`. Get one at
-https://console.anthropic.com/. If you leave it blank, everything else works fine — the AI feedback
-card just won't render (`generate_submission_feedback` / `explain_plagiarism_pair` return `None`
-and the rest of grading is unaffected). You can also flip `ENABLE_AI_FEEDBACK=false` to disable the
-calls entirely without removing the key.
+Do not commit or copy frontend/node_modules or backend/.venv into the project archive.
 
-## How grading works
+WSL + Windows Development
 
-1. Student uploads a source file for an assignment.
-2. `POST /api/submissions` stores it with `status: "pending"` and returns immediately; grading runs
-   as a FastAPI background task so the request isn't blocked on compiling/running code.
-3. `grading_service.grade_submission`:
-   - Compiles (C/C++) or loads (Python) the submission in an isolated temp directory.
-   - Runs every test case with a wall-clock timeout and memory cap (`code_runner.py`).
-   - Runs static quality checks — pylint for Python, five heuristics (commenting, expression
-     complexity, indentation, repetition, variable naming) for C/C++, ported from the original
-     project (`code_quality.py`).
-   - Combines both into `total_score` using the assignment's rubric weights.
-   - Calls Claude for qualitative feedback (`ai_service.py`), best-effort — any failure just omits
-     the AI section rather than failing the grade.
-4. The frontend polls while status is `pending`/`grading` and renders the full breakdown once
-   `graded`.
+When the source project is maintained on Windows and executed in WSL, copy source files from:
 
-## Security notes (read before deploying anywhere public)
+C:\Users\<user>\Assignment-Autograder
 
-- **Code execution is still subprocess-based, not containerized.** `code_runner.py` applies
-  `RLIMIT_AS` (memory), `RLIMIT_NPROC`, and a timeout, and strips the environment, but it does not
-  provide filesystem or network isolation the way a container/microVM would. For a real deployment,
-  run each submission inside a network-disabled, ephemeral sandbox — Docker with
-  `--network=none --pids-limit --memory`, gVisor, Firecracker, or a hosted judge API
-  (Judge0, Piston). The `run_in_sandbox`-shaped functions in `code_runner.py` are written so this
-  swap is localized to one file.
-- Rotate `JWT_SECRET_KEY` and never commit `.env` files (already gitignored).
-- The 512 KB upload cap and UTF-8-only check in `submissions.py` are basic guards, not a substitute
-  for the sandboxing point above.
+to:
 
-## Rubric / grading weights
+~/Assignment-Autograder
 
-Each assignment sets `test_case_weight` + `code_quality_weight` (must total 100). Defaults are
-75/25, matching the original project's scoring split.
+For example:
 
-## Tech stack
+rsync -av   --exclude='.venv'   --exclude='node_modules'   --exclude='__pycache__'   /mnt/c/Users/<user>/Assignment-Autograder/   ~/Assignment-Autograder/
 
-- **Backend**: FastAPI, Motor (async MongoDB), Pydantic v2, python-jose (JWT), passlib/bcrypt,
-  scikit-learn + NLTK (plagiarism), pylint, Anthropic Python SDK
-- **Frontend**: React 18, Vite, Tailwind CSS, React Router, axios, date-fns
-- **Infra**: Docker Compose (MongoDB, FastAPI, nginx-served static React build)
+The WSL virtual environment and frontend dependencies should be recreated inside WSL rather than copied from Windows.
+
+API Areas
+
+The backend exposes REST endpoints for:
+
+Authentication.
+
+Assignment creation and retrieval.
+
+Student submissions.
+
+TA submission review.
+
+Plagiarism checking and case retrieval.
+
+TA plagiarism decisions.
+
+Student plagiarism contests/concerns.
+
+The API is protected by role-based dependencies for student and TA operations.
+
+Security / Reliability Notes
+
+Deterministic grading remains independent of Gemini.
+
+Gemini failures are handled without changing the grade.
+
+Submission size and UTF-8 validation happen before duplicate detection.
+
+Duplicate content is rejected before unnecessary grading/API work.
+
+Plagiarism decisions are explicitly made by a TA.
+
+Student plagiarism concerns are restricted to students involved in the flagged case.
+
+Secrets are loaded from environment variables.
+
+Code execution uses configurable timeout and memory limits.
+
+Important Limitations
+
+Static quality analysis currently depends on the configured analyzer for the submission language.
+
+Language support must be enabled by the execution service; selecting a language in the UI alone does not make a compiler/runtime available.
+
+TF-IDF/cosine similarity is evidence of similarity, not proof of academic misconduct.
+
+Very short or highly standardized assignments can naturally produce high similarity.
+
+Gemini feedback is advisory and can occasionally be unavailable because of API/model limits or service errors.
+
+Development Checks
+
+Backend syntax check:
+
+python -m py_compile app/main.py
+
+For changed backend modules:
+
+python -m py_compile   app/services/plagiarism_service.py   app/services/grading_service.py   app/services/diff_service.py   app/routers/plagiarism.py
+
+Frontend:
+
+npm run dev
+
+For a production build:
+
+npm run build
